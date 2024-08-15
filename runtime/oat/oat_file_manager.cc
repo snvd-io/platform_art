@@ -472,6 +472,17 @@ std::vector<std::unique_ptr<const DexFile>> OatFileManager::OpenDexFilesFromOat(
     if (!strncmp("/gmscompat_fd_", dex_location, strlen("/gmscompat_fd_")) &&
           sscanf(dex_location, "/gmscompat_fd_%d", &fd) == 1) {
       fd = dup(fd);
+      struct stat fd_stat;
+      if (fstat(fd, &fd_stat) != 0) {
+          LOG(FATAL) << "fstat of " << dex_location << " failed: " << strerror(errno);
+          _exit(1); // a precaution in case LOG(FATAL) is accidentally or intentionally broken
+      }
+      // Don't allow using /gmscompat_fd to load code from an arbitrary file descriptor, e.g. a
+      // shared memory file descriptor
+      if (!S_ISREG(fd_stat.st_mode)) {
+          LOG(FATAL) << dex_location << " has failed the S_ISREG check, st_mode: 0" << std::oct << fd_stat.st_mode;
+          _exit(1); // a precaution in case LOG(FATAL) is accidentally or intentionally broken
+      }
       unix_file::FdFile fdFile(fd, false);
       ArtDexFileLoader dex_file_loader(&fdFile, dex_location);
       res = dex_file_loader.Open(Runtime::Current()->IsVerificationEnabled(), kVerifyChecksum,
